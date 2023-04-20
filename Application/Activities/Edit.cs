@@ -2,17 +2,27 @@ using AutoMapper;
 using Domain;
 using MediatR;
 using Persistence;
+using FluentValidation;
+using Application.Core;
 
 namespace Application.Activities
 {
     public class Edit
     {
-        public class Command : IRequest
+        public class Command : IRequest<Result<Unit>>
         {
             public Activity Activity { get; set; }
         }
 
-        public class Handler : IRequestHandler<Command>
+        public class CommandValidtor : AbstractValidator<Command>
+        {
+            public CommandValidtor()
+            {
+                RuleFor(x => x.Activity).SetValidator(new ActivityValidator());
+            }
+        }
+
+        public class Handler : IRequestHandler<Command, Result<Unit>>
         {
             private readonly DataContext _context;
             private readonly IMapper _mapper;
@@ -23,18 +33,21 @@ namespace Application.Activities
                 _mapper = mapper;
             }
 
-            public async Task<Unit> Handle(Command request, CancellationToken cancellationToken)
+            public async Task<Result<Unit>> Handle(Command request, CancellationToken cancellationToken)
             {
                 var activity = await _context.Activities.FindAsync(request.Activity.Id);
 
                 if (activity == null)
-                    throw new Exception("Could not find activity");
+                    return null;
 
                 _mapper.Map(request.Activity, activity);
 
-                await _context.SaveChangesAsync();
+                var restult = await _context.SaveChangesAsync() > 0;
 
-                return Unit.Value;
+                if (!restult)
+                    return Result<Unit>.Failure("Failed to update activity");
+
+                return Result<Unit>.Success(Unit.Value);
             }
         }
     }
